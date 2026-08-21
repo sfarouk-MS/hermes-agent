@@ -35,6 +35,7 @@ from agent.prompt_builder import (
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     HERMES_AGENT_HELP_GUIDANCE,
     KANBAN_GUIDANCE,
+    DEFERRED_REPORT_GUIDANCE,
     LONG_RUNNING_DEPLOY_GUIDANCE,
     MEMORY_GUIDANCE,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
@@ -228,6 +229,12 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # Cache-safe: static text, only present when terminal is in the toolset.
     if "terminal" in agent.valid_tool_names:
         stable_parts.append(LONG_RUNNING_DEPLOY_GUIDANCE)
+
+    # Deferred-report policy when the agent can schedule a wake-up.
+    if agent.valid_tool_names and (
+        {"cronjob", "terminal", "delegate_task"} & set(agent.valid_tool_names)
+    ):
+        stable_parts.append(DEFERRED_REPORT_GUIDANCE)
 
     # Tool-aware behavioral guidance: only inject when the tools are loaded
     tool_guidance = []

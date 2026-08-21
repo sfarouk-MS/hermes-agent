@@ -6911,6 +6911,68 @@ def run_conversation(
                     final_response = None
                     continue
 
+                # ── Deferred-report stop guard ─────────────────────────
+                # "I'll report back when both land" with no cron /
+                # notify_on_complete / background delegation leaves the
+                # messaging chat permanently silent (other topics never
+                # wake this session). Nudge once or twice to schedule
+                # real delivery before allowing that exit.
+                try:
+                    from agent.deferred_report_stop import (
+                        build_deferred_report_stop_nudge,
+                    )
+
+                    _deferred_nudge = build_deferred_report_stop_nudge(
+                        messages=messages,
+                        final_assistant_text=final_response,
+                        attempts=getattr(agent, "_deferred_report_stop_nudges", 0),
+                        available_tools=getattr(agent, "valid_tool_names", None),
+                    )
+                except Exception:
+                    logger.debug(
+                        "deferred-report stop-loop check failed", exc_info=True
+                    )
+                    _deferred_nudge = None
+
+                if _deferred_nudge:
+                    agent._deferred_report_stop_nudges = (
+                        getattr(agent, "_deferred_report_stop_nudges", 0) + 1
+                    )
+                    final_msg["finish_reason"] = "deferred_report_required"
+                    # Persist the acknowledgment as interim so the user
+                    # still sees it, then force a scheduling turn.
+                    agent._emit_interim_assistant_message(final_msg)
+                    messages.append(final_msg)
+                    try:
+                        agent._flush_messages_to_session_db(
+                            messages, conversation_history
+                        )
+                    except Exception:
+                        logger.debug(
+                            "deferred-report interim flush failed",
+                            exc_info=True,
+                        )
+                    messages.append({
+                        "role": "user",
+                        "content": _deferred_nudge,
+                        "_deferred_report_stop_synthetic": True,
+                    })
+                    agent._session_messages = messages
+                    logger.info(
+                        "deferred-report stop-loop nudge issued (attempt %d)",
+                        agent._deferred_report_stop_nudges,
+                    )
+                    agent._emit_status(
+                        "⚠️ Deferred report promised without a watcher — "
+                        "nudging to schedule delivery"
+                    )
+                    _pending_verification_response = final_response
+                    _pending_verification_response_previewed = (
+                        agent._interim_content_was_streamed(final_response or "")
+                    )
+                    final_response = None
+                    continue
+
                 messages.append(final_msg)
                 
                 _turn_exit_reason = f"text_response(finish_reason={finish_reason})"

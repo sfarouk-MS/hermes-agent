@@ -29,6 +29,7 @@ from agent.prompt_builder import (
     OPENAI_MODEL_EXECUTION_GUIDANCE,
     PARALLEL_TOOL_CALL_GUIDANCE,
     LONG_RUNNING_DEPLOY_GUIDANCE,
+    DEFERRED_REPORT_GUIDANCE,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     MEMORY_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
@@ -931,6 +932,18 @@ class TestLongRunningDeployGuidance:
         assert "background" in text
         assert "notify_on_complete" in text
         assert "post-deploy" in text or "verification" in text or "smoke" in text
+
+
+class TestDeferredReportGuidance:
+    def test_is_nonempty_string(self):
+        assert isinstance(DEFERRED_REPORT_GUIDANCE, str)
+        assert DEFERRED_REPORT_GUIDANCE.strip()
+
+    def test_requires_scheduled_delivery(self):
+        text = DEFERRED_REPORT_GUIDANCE.lower()
+        assert "cronjob" in text
+        assert "notify_on_complete" in text
+        assert "promise" in text
 
 
 # =========================================================================

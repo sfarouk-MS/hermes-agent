@@ -413,6 +413,20 @@ LONG_RUNNING_DEPLOY_GUIDANCE = (
     "from the deploy exit code alone."
 )
 
+# Deferred-report policy for messaging/multi-agent dashboards. Verbal
+# "I'll report back when…" exits leave the chat silent — other topics and
+# agents never wake this session.
+DEFERRED_REPORT_GUIDANCE = (
+    "# Deferred reports\n"
+    "If the user asks to be notified later (\"report back when…\", \"ping me "
+    "when both land\"), do not end the turn on a verbal promise. Other "
+    "Telegram topics / sibling agents do not notify this chat automatically. "
+    "In the same turn, schedule real delivery with one of: `cronjob` "
+    "(deliver back to this chat), `terminal(..., background=true, "
+    "notify_on_complete=true)`, or `delegate_task(..., background=true)`. "
+    "Then confirm what you scheduled."
+)
+
 # OpenAI GPT/Codex-specific execution guidance.  Addresses known failure modes
 # where GPT models abandon work on partial results, skip prerequisite lookups,
 # hallucinate instead of using tools, and declare "done" without verification.

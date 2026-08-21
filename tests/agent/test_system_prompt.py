@@ -240,3 +240,17 @@ class TestLongRunningDeployGuidanceInjection:
 
         agent = _make_agent(valid_tool_names=["read_file", "web_search"])
         assert LONG_RUNNING_DEPLOY_GUIDANCE not in _stable_prompt(agent)
+
+
+class TestDeferredReportGuidanceInjection:
+    def test_injected_when_scheduling_tools_present(self):
+        from agent.prompt_builder import DEFERRED_REPORT_GUIDANCE
+
+        agent = _make_agent(valid_tool_names=["cronjob", "read_file"])
+        assert DEFERRED_REPORT_GUIDANCE in _stable_prompt(agent)
+
+    def test_omitted_without_scheduling_tools(self):
+        from agent.prompt_builder import DEFERRED_REPORT_GUIDANCE
+
+        agent = _make_agent(valid_tool_names=["read_file", "web_search"])
+        assert DEFERRED_REPORT_GUIDANCE not in _stable_prompt(agent)
