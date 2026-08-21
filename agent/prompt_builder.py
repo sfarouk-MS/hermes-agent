@@ -397,6 +397,22 @@ PARALLEL_TOOL_CALL_GUIDANCE = (
     "in doubt and the calls are independent, batch them."
 )
 
+# Terminal-gated guidance for long deploys/rollouts. Injected for every agent
+# that has the terminal tool so messaging and CLI sessions share the same
+# policy: don't block the chat on a multi-minute deploy; wait for the
+# completion ping; then verify with a real post-deploy check.
+LONG_RUNNING_DEPLOY_GUIDANCE = (
+    "# Long deploys\n"
+    "Long-running deploys and rollouts must not block the conversation. Use "
+    "`terminal` with background=true and notify_on_complete=true (Hermes also "
+    "auto-applies this for common deploy CLIs and deploy scripts). Send brief "
+    "interim progress as normal assistant text between milestones so the user "
+    "is not left guessing. When the completion notification arrives, run a "
+    "real post-deploy verification (smoke test, health check, or relevant "
+    "test suite) and report what that check returned — do not claim success "
+    "from the deploy exit code alone."
+)
+
 # OpenAI GPT/Codex-specific execution guidance.  Addresses known failure modes
 # where GPT models abandon work on partial results, skip prerequisite lookups,
 # hallucinate instead of using tools, and declare "done" without verification.

@@ -2085,6 +2085,42 @@ _LONG_LIVED_FOREGROUND_PATTERNS = (
     re.compile(r"\bpython(?:3)?\s+-m\s+http\.server\b", re.IGNORECASE),
 )
 
+# Bounded long tasks that *do* exit (deploys, rollouts). Foreground mode
+# blocks the chat turn for minutes and prevents interim status updates —
+# auto-promote to background=true + notify_on_complete=true instead.
+_BOUNDED_LONG_DEPLOY_PATTERNS = (
+    re.compile(
+        r"\b(?:fly(?:ctl)?|vercel|netlify|railway|render|heroku|firebase|wrangler|"
+        r"caprover|serverless|eb)\s+deploy\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?deploy\b", re.IGNORECASE),
+    re.compile(r"\b(?:make|just|task)\s+deploy\b", re.IGNORECASE),
+    re.compile(r"\bhelm\s+(?:upgrade|install)\b", re.IGNORECASE),
+    re.compile(r"\bkubectl\s+apply\b", re.IGNORECASE),
+    re.compile(r"\bkubectl\s+rollout\b", re.IGNORECASE),
+    re.compile(r"\bterraform\s+apply\b", re.IGNORECASE),
+    re.compile(r"\bpulumi\s+up\b", re.IGNORECASE),
+    re.compile(r"\bansible-playbook\b", re.IGNORECASE),
+    re.compile(r"\bcap\s+deploy\b", re.IGNORECASE),
+    re.compile(r"\bdocker\s+stack\s+deploy\b", re.IGNORECASE),
+    re.compile(r"\bgcloud\s+(?:app|run)\s+deploy\b", re.IGNORECASE),
+    # ./deploy.sh, scripts/deploy-live.py, bash deploy, etc.
+    re.compile(
+        r"(?:^|[\s;/|&])(?:\./|(?:[\w.-]+/)*)?deploy[\w.-]*\.(?:sh|bash|py|rb|js|ts|mjs|cjs)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:^|[\s;/|&])(?:bash|sh|zsh|python3?|node)\s+(?:(?:[\w.-]+/)*)?deploy[\w.-]*\b",
+        re.IGNORECASE,
+    ),
+    # Bare deploy binary/script as the command word (not an argument).
+    re.compile(
+        r"(?:^|[;&|]\s*|&&\s*|\|\|\s*)(?:\./)?deploy(?:\s|$)",
+        re.IGNORECASE,
+    ),
+)
+
 
 def _looks_like_help_or_version_command(command: str) -> bool:
     """Return True for informational invocations that should never be blocked."""
@@ -2095,6 +2131,48 @@ def _looks_like_help_or_version_command(command: str) -> bool:
         or " --version" in normalized
         or normalized.endswith(" -v")
     )
+
+
+def _looks_like_long_deploy(command: str) -> bool:
+    """Return True when *command* looks like a long bounded deploy/rollout."""
+    if not command or _looks_like_help_or_version_command(command):
+        return False
+    unquoted = _strip_quotes(command)
+    return any(pattern.search(unquoted) for pattern in _BOUNDED_LONG_DEPLOY_PATTERNS)
+
+
+def _autobackground_long_deploy(
+    *,
+    command: str,
+    background: bool,
+    notify_on_complete: bool,
+    watch_patterns,
+) -> tuple[bool, bool, str]:
+    """Auto-promote long deploys to background + notify_on_complete.
+
+    Returns ``(background, notify_on_complete, note)``. *note* is empty when
+    no promotion happened. watch_patterns, when already set, is left alone —
+    mid-process signals remain the caller's choice.
+    """
+    if not _looks_like_long_deploy(command):
+        return background, notify_on_complete, ""
+
+    note_parts: list[str] = []
+    if not background:
+        background = True
+        note_parts.append(
+            "Auto-backgrounded long deploy/rollout so the chat turn stays "
+            "responsive and can send interim status updates."
+        )
+    if background and not notify_on_complete and not watch_patterns:
+        notify_on_complete = True
+        note_parts.append(
+            "Auto-enabled notify_on_complete=true so you are pinged when the "
+            "deploy exits. After that notification, run a real post-deploy "
+            "verification (smoke test, health check, or relevant tests) before "
+            "claiming success."
+        )
+    return background, notify_on_complete, " ".join(note_parts)
 
 
 def _foreground_background_guidance(command: str) -> str | None:
@@ -2298,6 +2376,16 @@ def terminal_tool(
                 f"{FOREGROUND_MAX_TIMEOUT}s. Use background=true with "
                 f"notify_on_complete=true for long-running commands."
             )
+
+        # Long deploys/rollouts: auto-promote to background + notify so the
+        # conversation stays free for interim status and the agent is pinged
+        # on exit (then expected to run post-deploy verification).
+        background, notify_on_complete, auto_deploy_note = _autobackground_long_deploy(
+            command=command,
+            background=background,
+            notify_on_complete=notify_on_complete,
+            watch_patterns=watch_patterns,
+        )
 
         # Guardrail: long-lived server/watch commands should run as managed
         # background sessions, not foreground shell hacks.
@@ -2580,6 +2668,8 @@ def terminal_tool(
                     result_data["approval"] = approval_note
                 if pty_disabled_reason:
                     result_data["pty_note"] = pty_disabled_reason
+                if auto_deploy_note:
+                    result_data["auto_background"] = auto_deploy_note
 
                 # Nudge: background=True without notify_on_complete=True OR
                 # watch_patterns is a silent process. The agent has NO way to

@@ -28,6 +28,7 @@ from agent.prompt_builder import (
     TOOL_USE_ENFORCEMENT_MODELS,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
     PARALLEL_TOOL_CALL_GUIDANCE,
+    LONG_RUNNING_DEPLOY_GUIDANCE,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     MEMORY_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
@@ -914,6 +915,22 @@ class TestParallelToolCallGuidance:
         # Heading delimits it as its own section in the assembled prompt.
         assert PARALLEL_TOOL_CALL_GUIDANCE.lstrip().startswith("#")
 
+
+class TestLongRunningDeployGuidance:
+    """Contracts for the terminal-gated long-deploy policy block."""
+
+    def test_is_nonempty_string(self):
+        assert isinstance(LONG_RUNNING_DEPLOY_GUIDANCE, str)
+        assert LONG_RUNNING_DEPLOY_GUIDANCE.strip()
+
+    def test_has_a_heading(self):
+        assert LONG_RUNNING_DEPLOY_GUIDANCE.lstrip().startswith("#")
+
+    def test_requires_background_notify_and_post_deploy_verify(self):
+        text = LONG_RUNNING_DEPLOY_GUIDANCE.lower()
+        assert "background" in text
+        assert "notify_on_complete" in text
+        assert "post-deploy" in text or "verification" in text or "smoke" in text
 
 
 # =========================================================================
