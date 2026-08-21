@@ -226,3 +226,17 @@ class TestTelegramRichMessagesHint:
             stable = _stable_prompt(agent)
         assert "Standard Markdown is automatically converted" in stable
         assert "lean into it" not in stable
+
+
+class TestLongRunningDeployGuidanceInjection:
+    def test_injected_when_terminal_tool_present(self):
+        from agent.prompt_builder import LONG_RUNNING_DEPLOY_GUIDANCE
+
+        agent = _make_agent(valid_tool_names=["terminal", "read_file"])
+        assert LONG_RUNNING_DEPLOY_GUIDANCE in _stable_prompt(agent)
+
+    def test_omitted_without_terminal_tool(self):
+        from agent.prompt_builder import LONG_RUNNING_DEPLOY_GUIDANCE
+
+        agent = _make_agent(valid_tool_names=["read_file", "web_search"])
+        assert LONG_RUNNING_DEPLOY_GUIDANCE not in _stable_prompt(agent)
