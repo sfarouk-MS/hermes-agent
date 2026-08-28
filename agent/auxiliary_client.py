@@ -202,8 +202,44 @@ def _openai_http_client_kwargs(
         return {}
     return {"http_client": client}
 
+def _env_hint_for_provider(provider: str) -> str:
+    """Best-effort env-var hint naming a provider's API key variable.
+
+    Prefers the env var the provider registry actually declares; otherwise
+    falls back to a sanitized ``<PROVIDER>_API_KEY`` guess. Sanitization is
+    load-bearing: provider ids may contain hyphens ("opencode-free"), which
+    are invalid in POSIX env var names, so the raw upper-cased id would name
+    a variable the user cannot set.
+    """
+    normalized = (provider or "").strip().lower()
+    try:
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        pcfg = PROVIDER_REGISTRY.get(normalized)
+        if pcfg and pcfg.api_key_env_vars:
+            return pcfg.api_key_env_vars[0]
+    except Exception:
+        pass
+    sanitized = re.sub(r"[^A-Z0-9]+", "_", normalized.upper()).strip("_") or "PROVIDER"
+    return f"{sanitized}_API_KEY"
+
+
 def _create_openai_client(*, api_key: str, base_url: str, **kwargs: Any) -> Any:
     kwargs = {**_openai_http_client_kwargs(base_url), **kwargs}
+    # OpenCode Zen free tier: the keyless placeholder must never reach the
+    # wire — the Zen relay serves free models anonymously but 401s any
+    # unrecognized bearer. Override the SDK's Authorization header with an
+    # empty value (single shared chokepoint for every aux client build).
+    try:
+        from hermes_cli.models import (
+            OPENCODE_ZEN_FREE_KEYLESS_PLACEHOLDER,
+            opencode_zen_free_headers,
+        )
+        if api_key == OPENCODE_ZEN_FREE_KEYLESS_PLACEHOLDER:
+            merged = dict(kwargs.get("default_headers") or {})
+            merged.update(opencode_zen_free_headers())
+            kwargs["default_headers"] = merged
+    except Exception:
+        pass
     # Hermes owns auxiliary retry + provider/model fallback policy (the
     # same-provider transient retry in call_llm plus the except-chain
     # fallback). The OpenAI SDK's own default (max_retries=2 → up to 3
@@ -5696,6 +5732,17 @@ def resolve_provider_client(
         # credential is registered for this provider alias.
         if explicit_api_key:
             api_key = explicit_api_key.strip() or api_key
+        # OpenCode Zen free tier (*-free slugs): served anonymously on the
+        # Zen relay only — no credential needed, and any unknown bearer
+        # (including a Go subscription key) is rejected. Route through the
+        # keyless Zen runtime regardless of configured OpenCode credentials.
+        try:
+            from hermes_cli.models import opencode_zen_free_runtime as _oc_free_rt
+            _free_rt = _oc_free_rt(provider, model)
+        except Exception:
+            _free_rt = None
+        if _free_rt is not None:
+            api_key = _free_rt["api_key"]
         if not api_key:
             tried_sources = list(pconfig.api_key_env_vars)
             if provider == "copilot":
@@ -5706,6 +5753,8 @@ def resolve_provider_client(
             return None, None
 
         raw_base_url = str(creds.get("base_url", "")).strip().rstrip("/") or pconfig.inference_base_url
+        if _free_rt is not None:
+            raw_base_url = str(_free_rt["base_url"]).rstrip("/")
         base_url = _to_openai_base_url(raw_base_url)
         # Honour an explicit base_url override from the caller — used when a
         # fallback_model entry (or custom_providers lookup) routes through a
@@ -8049,7 +8098,7 @@ def call_llm(
                 else:
                     raise RuntimeError(
                         f"Provider '{_explicit}' is set in config.yaml but no API key "
-                        f"was found. Set the {_explicit.upper()}_API_KEY environment "
+                        f"was found. Set the {_env_hint_for_provider(_explicit)} environment "
                         f"variable, or switch to a different provider with `hermes model`."
                     )
             # For auto/custom with no credentials, try the full auto chain
@@ -8762,7 +8811,7 @@ async def async_call_llm(
                 else:
                     raise RuntimeError(
                         f"Provider '{_explicit}' is set in config.yaml but no API key "
-                        f"was found. Set the {_explicit.upper()}_API_KEY environment "
+                        f"was found. Set the {_env_hint_for_provider(_explicit)} environment "
                         f"variable, or switch to a different provider with `hermes model`."
                     )
             if client is None and not resolved_base_url:
