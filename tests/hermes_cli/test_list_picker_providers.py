@@ -82,6 +82,8 @@ def test_passthrough_kwargs_to_base(monkeypatch):
         user_providers={"foo": {"api": "http://x"}},
         custom_providers=[{"name": "bar", "base_url": "http://y"}],
         max_models=12,
+        excluded_providers=["opencode-free"],
+        refresh=True,
     )
 
     assert captured["current_provider"] == "openrouter"
@@ -90,6 +92,9 @@ def test_passthrough_kwargs_to_base(monkeypatch):
     assert captured["user_providers"] == {"foo": {"api": "http://x"}}
     assert captured["custom_providers"] == [{"name": "bar", "base_url": "http://y"}]
     assert captured["max_models"] == 12
+    assert captured["excluded_providers"] == ["opencode-free"]
+    assert captured["refresh"] is True
+    assert captured["for_picker"] is True
 
 
 

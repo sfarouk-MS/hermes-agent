@@ -611,7 +611,7 @@ class TestModelsEndpoint:
         assert seen["thread_calls"] == 1
         assert seen["ctx"] is ctx
         assert seen["kwargs"] == {
-            "include_unconfigured": True,
+            "include_unconfigured": False,
             "refresh": True,
         }
 

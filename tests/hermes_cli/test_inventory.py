@@ -169,6 +169,28 @@ def test_include_unconfigured_appends_canonical_skeletons():
     assert all(r["total_models"] == 0 for r in skeletons)
 
 
+def test_include_unconfigured_does_not_resurrect_excluded_providers():
+    """WebUI used to re-add excluded slugs as canonical skeletons."""
+    rows = [
+        {"slug": "openrouter", "name": "OpenRouter", "models": ["m1"],
+         "total_models": 1, "is_current": True, "is_user_defined": False,
+         "source": "built-in"},
+    ]
+    ctx = ConfigContext(
+        current_provider="openrouter",
+        current_model="m1",
+        current_base_url="",
+        user_providers={},
+        custom_providers=[],
+        excluded_providers=["opencode-free", "free"],
+    )
+    with _list_auth_returning(rows):
+        payload = build_models_payload(ctx, include_unconfigured=True)
+    slugs = {r["slug"].lower() for r in payload["providers"]}
+    assert "opencode-free" not in slugs
+    assert "openrouter" in slugs
+
+
 def test_explicit_only_filters_ambient_credentials_but_keeps_current_and_custom_rows():
     rows = [
         {"slug": "openai-codex", "name": "OpenAI Codex", "models": ["gpt-5.4"],

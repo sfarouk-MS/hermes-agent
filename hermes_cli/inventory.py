@@ -183,9 +183,12 @@ def build_models_payload(
       provider may still work; hiding the provider strands the user. Set for
       any surface a human is choosing from, not for programmatic resolution.
     """
-    from hermes_cli.model_switch import list_authenticated_providers
+    from hermes_cli.model_switch import (
+        list_authenticated_providers,
+        list_picker_providers,
+    )
 
-    rows = list_authenticated_providers(
+    list_kwargs = dict(
         current_provider=ctx.current_provider,
         current_base_url=ctx.current_base_url,
         current_model=ctx.current_model,
@@ -196,9 +199,16 @@ def build_models_payload(
         refresh=refresh,
         probe_custom_providers=probe_custom_providers,
         probe_current_custom_provider=probe_current_custom_provider,
-        for_picker=for_picker,
         excluded_providers=ctx.excluded_providers or [],
     )
+    # Interactive pickers (Telegram /model, HUD Control, WebUI
+    # /api/model/options) share list_picker_providers so a catalog /
+    # excluded_providers change applies everywhere and all surfaces
+    # read the same 1h provider_models_cache.json.
+    if for_picker:
+        rows = list_picker_providers(**list_kwargs)
+    else:
+        rows = list_authenticated_providers(**list_kwargs)
 
     moa_row = _moa_provider_row(ctx.current_provider)
     if moa_row is not None:
@@ -296,6 +306,9 @@ def build_model_options_payload(
       endpoints do not block the picker
     - explicit refresh: probe every custom provider while busting the model
       cache so live catalogs repopulate fully
+    - ``for_picker=True`` so the provider/model rows come from
+      :func:`hermes_cli.model_switch.list_picker_providers` — the same
+      catalog Telegram ``/model`` and HUD Control use
     """
     refresh = bool(refresh)
     return build_models_payload(
@@ -310,6 +323,7 @@ def build_model_options_payload(
         refresh=refresh,
         probe_custom_providers=refresh,
         probe_current_custom_provider=not refresh,
+        for_picker=True,
     )
 
 
@@ -524,12 +538,16 @@ def _append_unconfigured_rows(
     from hermes_cli.auth import PROVIDER_REGISTRY
     from hermes_cli.models import CANONICAL_PROVIDERS, _PROVIDER_LABELS
 
+    from hermes_cli.model_switch import picker_slug_is_excluded
+
     seen = {r["slug"].lower() for r in rows}
     cur = (ctx.current_provider or "").lower()
     cur_model = str(ctx.current_model or "").strip()
     extras: list[dict] = []
     for entry in CANONICAL_PROVIDERS:
         if entry.slug.lower() in seen:
+            continue
+        if picker_slug_is_excluded(entry.slug, ctx.excluded_providers):
             continue
         if current_only and entry.slug.lower() != cur:
             continue

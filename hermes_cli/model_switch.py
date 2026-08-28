@@ -2508,7 +2508,26 @@ def list_authenticated_providers(
             # config — these are hidden from the picker.
             if not is_provider_enabled(ep_cfg):
                 continue
+            if picker_slug_is_excluded(ep_name, _excluded):
+                continue
             if ep_name.lower() in seen_slugs:
+                continue
+            # Leftover user-config rows for a known provider with no key
+            # (and no endpoint URL) stay hidden — same as Telegram /model
+            # dropping empty leftovers after a catalog exclude/removal.
+            _leftover_key = str(ep_cfg.get("api_key", "") or "").strip()
+            if not _leftover_key:
+                _leftover_env = str(ep_cfg.get("key_env", "") or "").strip()
+                _leftover_key = (
+                    os.environ.get(_leftover_env, "").strip() if _leftover_env else ""
+                )
+            _leftover_url = str(
+                ep_cfg.get("base_url", "")
+                or ep_cfg.get("api", "")
+                or ep_cfg.get("url", "")
+                or ""
+            ).strip()
+            if not _leftover_key and not _leftover_url:
                 continue
             display_name = ep_cfg.get("name", "") or ep_name
             api_url = (
@@ -3066,6 +3085,38 @@ def _prepend_moa_picker_provider(providers: List[dict], current_provider: str = 
         return providers
 
 
+def picker_slug_is_excluded(slug: str, excluded_providers) -> bool:
+    """True when *slug* (or one of its aliases) is in ``excluded_providers``.
+
+    Shared by the authenticated-provider scan, leftover ``providers:`` rows,
+    and WebUI unconfigured skeletons so Telegram ``/model``, HUD Control, and
+    the dashboard picker hide the same slugs.
+    """
+    raw = str(slug or "").strip().lower()
+    excluded = {
+        str(p).strip().lower() for p in (excluded_providers or []) if p
+    }
+    if not raw or not excluded:
+        return False
+    if raw in excluded:
+        return True
+    try:
+        from hermes_cli.models import _PROVIDER_ALIASES, normalize_provider
+    except Exception:
+        return False
+    canonical = str(normalize_provider(raw) or raw).strip().lower()
+    if canonical in excluded:
+        return True
+    for alias, canon in _PROVIDER_ALIASES.items():
+        alias_l = str(alias).strip().lower()
+        canon_l = str(canon).strip().lower()
+        if canon_l == raw and alias_l in excluded:
+            return True
+        if canon_l == canonical and alias_l in excluded:
+            return True
+    return False
+
+
 def list_picker_providers(
     current_provider: str = "",
     current_base_url: str = "",
@@ -3075,6 +3126,11 @@ def list_picker_providers(
     current_model: str = "",
     include_moa: bool = False,
     excluded_providers: list | None = None,
+    *,
+    refresh: bool = False,
+    force_fresh_nous_tier: bool = False,
+    probe_custom_providers: bool = True,
+    probe_current_custom_provider: bool = False,
 ) -> List[dict]:
     """Interactive-picker variant of :func:`list_authenticated_providers`.
 
@@ -3094,6 +3150,10 @@ def list_picker_providers(
     All other providers and metadata fields are passed through unchanged.
     The typed ``/model <name>`` path is unaffected -- only the interactive
     picker payload is narrowed.
+
+    ``refresh`` / probe flags match :func:`list_authenticated_providers` so
+    WebUI ``?refresh=1`` and Telegram ``/model --refresh`` bust the same
+    ``provider_models_cache.json`` (1h TTL). Do not add a second cache.
     """
     from hermes_cli.models import fetch_openrouter_models
 
@@ -3106,6 +3166,10 @@ def list_picker_providers(
         current_model=current_model,
         for_picker=True,
         excluded_providers=excluded_providers,
+        refresh=refresh,
+        force_fresh_nous_tier=force_fresh_nous_tier,
+        probe_custom_providers=probe_custom_providers,
+        probe_current_custom_provider=probe_current_custom_provider,
     )
     if include_moa:
         providers = _prepend_moa_picker_provider(providers, current_provider=current_provider)

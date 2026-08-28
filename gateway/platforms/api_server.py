@@ -2808,13 +2808,16 @@ class APIServerAdapter(BasePlatformAdapter):
             return auth_err
 
         refresh = _coerce_request_bool(request.query.get("refresh"), default=False)
+        include_unconfigured = _coerce_request_bool(
+            request.query.get("include_unconfigured"), default=False
+        )
         try:
             from hermes_cli.inventory import build_model_options_payload, load_picker_context
 
             def _build_payload() -> Dict[str, Any]:
                 return build_model_options_payload(
                     load_picker_context(),
-                    include_unconfigured=True,
+                    include_unconfigured=include_unconfigured,
                     refresh=refresh,
                 )
 

@@ -536,11 +536,10 @@ export const api = {
     const qs = new URLSearchParams();
     if (profile) qs.set("profile", profile);
     if (refresh) qs.set("refresh", "1");
-    // Dashboard surfaces (Models page, profile builder, cron) are
-    // management/setup UIs: keep the full provider universe with setup
-    // affordances. The endpoint now defaults to the configured subset for
-    // desktop chat pickers (#56974), so opt in explicitly here.
-    qs.set("include_unconfigured", "1");
+    // Same catalog as Telegram /model and HUD Control: authenticated
+    // providers only, honoring model_catalog.excluded_providers. Setup
+    // affordances for unconfigured providers live on Config / OAuth —
+    // do not resurrect leftover slugs via include_unconfigured=1.
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return fetchJSON<ModelOptionsResponse>(`/api/model/options${suffix}`);
   },
